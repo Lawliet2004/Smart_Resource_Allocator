@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+dist/
+build/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Env files (commit .env.example, never .env)
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker
+pgdata/
+
+# Logs
+*.log
+logs/
+
+# Claude Code internals (worktrees, session state) — never push
+.claude/
+
+# Personal planning docs
+PLAN.md
+NOTES.md
+SCRATCH.md
