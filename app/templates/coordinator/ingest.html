@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Field Report Ingest - Smart Resource Allocator{% endblock %}
+
+{% block content %}
+<section class="mb-6">
+  <h1 class="text-2xl font-semibold">Field Report Ingest</h1>
+</section>
+
+<section class="rounded border border-slate-200 bg-white p-5">
+  <form
+    method="post"
+    action="/c/ingest"
+    hx-post="/c/ingest"
+    hx-target="#ingest-result"
+    hx-swap="innerHTML"
+    class="space-y-4"
+  >
+    <label class="form-field">
+      <span>Report text</span>
+      <textarea class="input min-h-40" name="raw_text" required></textarea>
+    </label>
+    <button class="btn-primary" type="submit">Extract and match</button>
+  </form>
+</section>
+
+<div id="ingest-result">
+  {% include "partials/ingest_result.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Smart Resource Allocator{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='css/app.css') }}">
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-950">
+    <header class="border-b border-slate-200 bg-white">
+      <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <a href="/" class="text-base font-semibold tracking-tight">Smart Resource Allocator</a>
+        <div class="flex items-center gap-2 text-sm">
+          {% if user %}
+            {% if user.role == "volunteer" %}
+              <a class="nav-link" href="/v/">Dashboard</a>
+              <a class="nav-link" href="/v/tasks">Tasks</a>
+              <a class="nav-link" href="/v/profile">Profile</a>
+            {% elif user.role == "coordinator" %}
+              <a class="nav-link" href="/c/">Dashboard</a>
+              <a class="nav-link" href="/c/tasks/new">New task</a>
+              <a class="nav-link" href="/c/ingest">Ingest</a>
+            {% elif user.role == "admin" %}
+              <a class="nav-link" href="/a/">Admin</a>
+            {% endif %}
+            <form method="post" action="/logout">
+              <button class="btn-secondary" type="submit">Sign out</button>
+            </form>
+          {% else %}
+            <a class="nav-link" href="/login">Login</a>
+            <a class="btn-primary" href="/register">Register</a>
+          {% endif %}
+        </div>
+      </nav>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-6">
+      {% if message %}
+        <div class="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {{ message }}
+        </div>
+      {% endif %}
+      {% if error %}
+        <div class="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {{ error }}
+        </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

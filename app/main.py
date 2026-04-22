@@ -1,11 +1,17 @@
 """FastAPI entry point."""
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.router import api_router
 from app.core.database import get_db
+from app.web.router import web_router
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
     title="Smart Resource Allocator",
@@ -13,6 +19,8 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(web_router)
 app.include_router(api_router, prefix="/api")
 
 

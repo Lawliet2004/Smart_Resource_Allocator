@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Smart Resource Allocator{% endblock %}
+
+{% block content %}
+<section class="mx-auto max-w-md">
+  <h1 class="mb-6 text-2xl font-semibold">Login</h1>
+  <form method="post" action="/login" class="space-y-4 rounded border border-slate-200 bg-white p-5">
+    <input type="hidden" name="next" value="{{ request.query_params.get('next', '') }}">
+    <label class="form-field">
+      <span>Email</span>
+      <input class="input" type="email" name="email" autocomplete="email" required>
+    </label>
+    <label class="form-field">
+      <span>Password</span>
+      <input class="input" type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn-primary w-full" type="submit">Login</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% if error %}
+  <div class="mt-6 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+    {{ error }}
+  </div>
+{% endif %}
+
+{% if task %}
+  <section class="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr]">
+    <div>
+      <h2 class="mb-3 text-lg font-semibold">Extracted task</h2>
+      {% include "partials/task_card.html" %}
+    </div>
+    <div>
+      <h2 class="mb-3 text-lg font-semibold">Matched volunteers</h2>
+      <div class="space-y-3">
+        {% for volunteer in matched_volunteers %}
+          {% include "partials/volunteer_card.html" %}
+        {% else %}
+          <div class="empty-state">No available volunteers matched this report.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endif %}

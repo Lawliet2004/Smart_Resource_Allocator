@@ -1,0 +1,144 @@
+.nav-link {
+  border-radius: 6px;
+  color: rgb(51 65 85);
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+}
+
+.nav-link:hover {
+  background: rgb(241 245 249);
+  color: rgb(15 23 42);
+}
+
+.btn-primary,
+.btn-secondary {
+  align-items: center;
+  border-radius: 6px;
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1.25rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.9rem;
+}
+
+.btn-primary {
+  background: rgb(20 83 45);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: rgb(22 101 52);
+}
+
+.btn-secondary {
+  background: white;
+  border: 1px solid rgb(203 213 225);
+  color: rgb(15 23 42);
+}
+
+.btn-secondary:hover {
+  background: rgb(248 250 252);
+}
+
+.form-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.form-field span {
+  color: rgb(51 65 85);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.input {
+  border: 1px solid rgb(203 213 225);
+  border-radius: 6px;
+  color: rgb(15 23 42);
+  outline: none;
+  padding: 0.65rem 0.75rem;
+  width: 100%;
+}
+
+.input:focus {
+  border-color: rgb(20 83 45);
+  box-shadow: 0 0 0 3px rgb(187 247 208);
+}
+
+.checkbox-row {
+  align-items: center;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 6px;
+  display: flex;
+  gap: 0.6rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.metric {
+  background: white;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.metric span {
+  color: rgb(71 85 105);
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  color: rgb(15 23 42);
+  display: block;
+  font-size: 1.75rem;
+  margin-top: 0.35rem;
+}
+
+.badge,
+.badge-green,
+.skill-chip {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1rem;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.badge {
+  background: rgb(241 245 249);
+  color: rgb(51 65 85);
+}
+
+.badge-green {
+  background: rgb(220 252 231);
+  color: rgb(22 101 52);
+}
+
+.skill-chip {
+  background: rgb(239 246 255);
+  color: rgb(30 64 175);
+}
+
+.empty-state {
+  background: white;
+  border: 1px dashed rgb(203 213 225);
+  border-radius: 6px;
+  color: rgb(71 85 105);
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.map-box {
+  border: 1px solid rgb(203 213 225);
+  border-radius: 6px;
+  height: 18rem;
+  overflow: hidden;
+}

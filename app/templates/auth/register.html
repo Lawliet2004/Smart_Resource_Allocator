@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Smart Resource Allocator{% endblock %}
+
+{% block content %}
+<section class="mx-auto max-w-xl">
+  <h1 class="mb-6 text-2xl font-semibold">Register</h1>
+  <form method="post" action="/register" class="space-y-4 rounded border border-slate-200 bg-white p-5">
+    <label class="form-field">
+      <span>Name</span>
+      <input class="input" type="text" name="name" autocomplete="name" required>
+    </label>
+    <label class="form-field">
+      <span>Email</span>
+      <input class="input" type="email" name="email" autocomplete="email" required>
+    </label>
+    <label class="form-field">
+      <span>Password</span>
+      <input class="input" type="password" name="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label class="form-field">
+      <span>Role</span>
+      <select class="input" name="role">
+        {% for value, label in roles %}
+          <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-field">
+      <span>Organization name</span>
+      <input class="input" type="text" name="org_name" placeholder="Required for coordinators">
+    </label>
+    <label class="form-field flex items-center gap-2 mt-2">
+      <input type="checkbox" name="consent" required>
+      <span class="text-sm text-slate-700">I consent to the processing of my personal data.</span>
+    </label>
+    <button class="btn-primary w-full" type="submit">Create account</button>
+  </form>
+</section>
+{% endblock %}

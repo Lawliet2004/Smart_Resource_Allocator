@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Task Form - Smart Resource Allocator{% endblock %}
+
+{% block content %}
+<section class="mb-6">
+  <h1 class="text-2xl font-semibold">{{ "Edit Task" if task else "New Task" }}</h1>
+</section>
+
+<form method="post" action="{{ action }}" class="grid gap-6 lg:grid-cols-[1fr_.9fr]">
+  <section class="space-y-4 rounded border border-slate-200 bg-white p-5">
+    <label class="form-field">
+      <span>Title</span>
+      <input class="input" type="text" name="title" value="{{ task.title if task else '' }}" required>
+    </label>
+    <label class="form-field">
+      <span>Description</span>
+      <textarea class="input min-h-32" name="description">{{ task.description if task else '' }}</textarea>
+    </label>
+    <label class="form-field">
+      <span>Location</span>
+      <input class="input" type="text" name="location" id="location-input" value="{{ task.location if task else '' }}">
+    </label>
+    <label class="form-field">
+      <span>Urgency</span>
+      <select class="input" name="urgency">
+        {% for urgency in [1, 2, 3, 4, 5] %}
+          <option value="{{ urgency }}" {% if task and task.urgency == urgency %}selected{% endif %}>{{ urgency }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="hidden" name="latitude" id="latitude-input" value="{{ task.latitude if task and task.latitude is not none else '' }}">
+    <input type="hidden" name="longitude" id="longitude-input" value="{{ task.longitude if task and task.longitude is not none else '' }}">
+    <button class="btn-primary" type="submit">Save task</button>
+  </section>
+
+  <section class="space-y-4 rounded border border-slate-200 bg-white p-5">
+    <div>
+      <h2 class="font-semibold">Required Skills</h2>
+      <div class="mt-3 grid gap-2 sm:grid-cols-2">
+        {% for value, label in skills %}
+          <label class="checkbox-row">
+            <input type="checkbox" name="required_skills" value="{{ value }}" {% if task and value in (task.required_skills or []) %}checked{% endif %}>
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <h2 class="mb-3 font-semibold">Map Pin</h2>
+      <div id="task-map" class="map-box"></div>
+    </div>
+  </section>
+</form>
+
+<script>
+  if (window.L) {
+    const latInput = document.getElementById("latitude-input");
+    const lngInput = document.getElementById("longitude-input");
+    const hasPoint = latInput.value && lngInput.value;
+    const start = hasPoint ? [Number(latInput.value), Number(lngInput.value)] : [22.5726, 88.3639];
+    const map = L.map("task-map").setView(start, hasPoint ? 12 : 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+    let marker = L.marker(start).addTo(map);
+    map.on("click", (event) => {
+      marker.setLatLng(event.latlng);
+      latInput.value = event.latlng.lat.toFixed(6);
+      lngInput.value = event.latlng.lng.toFixed(6);
+    });
+  }
+</script>
+{% endblock %}
