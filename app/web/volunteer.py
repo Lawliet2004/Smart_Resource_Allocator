@@ -101,15 +101,16 @@ def matched_open_tasks(db: DbSession, volunteer: Volunteer) -> list[tuple[Task, 
     tasks = db.execute(stmt).scalars().all()
     ranked: list[tuple[Task, int]] = []
     volunteer_skills = normalized_skill_set(volunteer.skills)
+    volunteer_location = (volunteer.location or "").strip().casefold()
     for task in tasks:
         required_skills = normalized_skill_set(task.required_skills)
         if required_skills and not required_skills.intersection(volunteer_skills):
             continue
-        if (
-            task.location
-            and volunteer.location
-            and task.location.lower() != volunteer.location.lower()
-        ):
+        # Symmetric location filter: if the task specifies a location, the
+        # volunteer must have a matching one. Tasks without a location are
+        # always eligible.
+        task_location = (task.location or "").strip().casefold()
+        if task_location and task_location != volunteer_location:
             continue
         ranked.append((task, task_match_score(task, volunteer)))
     return sorted(ranked, key=lambda item: item[1], reverse=True)

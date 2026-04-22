@@ -22,6 +22,7 @@ def _reset_tables() -> None:
 
 
 def _register_user(client, *, email: str, role: str, name: str) -> None:
+    suffix = (sum(ord(ch) for ch in email) % 200) + 1
     response = client.post(
         "/register",
         data={
@@ -32,6 +33,7 @@ def _register_user(client, *, email: str, role: str, name: str) -> None:
             "name": name,
             "org_name": "Helpers Org",
         },
+        headers={"X-Forwarded-For": f"203.0.113.{suffix}"},
         follow_redirects=False,
     )
     assert response.status_code == 303

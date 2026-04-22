@@ -4,12 +4,16 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.router import api_router
 from app.core.database import get_db
+from app.web.rate_limit import limiter, rate_limit_exceeded_handler
 from app.web.router import web_router
+from app.web.security_headers import add_security_headers
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -19,9 +23,20 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(web_router)
 app.include_router(api_router, prefix="/api")
+
+
+@app.middleware("http")
+async def apply_security_headers(request, call_next):
+    response = await call_next(request)
+    add_security_headers(response)
+    return response
 
 
 @app.get("/health")

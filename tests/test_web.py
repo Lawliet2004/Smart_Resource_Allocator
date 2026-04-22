@@ -9,6 +9,10 @@ from app.models.assignment import Assignment
 from app.models.task import Task
 
 
+def _forwarded_for(ip: str) -> dict[str, str]:
+    return {"X-Forwarded-For": ip}
+
+
 def _reset_web_tables() -> None:
     db = SessionLocal()
     try:
@@ -27,6 +31,42 @@ def test_public_pages_render(client):
     assert client.get("/register").status_code == 200
 
 
+def test_login_page_sets_security_headers(client):
+    response = client.get("/login")
+    assert response.status_code == 200
+
+    assert "Content-Security-Policy" in response.headers
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Permissions-Policy"] == "geolocation=(), camera=(), microphone=()"
+    assert "Strict-Transport-Security" not in response.headers
+
+
+def test_login_rate_limiter_blocks_11th_attempt(client):
+    _reset_web_tables()
+
+    target_ip = "198.51.100.23"
+    for attempt in range(10):
+        response = client.post(
+            "/login",
+            data={"email": "missing@example.com", "password": "wrong-password"},
+            headers={"X-Forwarded-For": target_ip},
+            follow_redirects=False,
+        )
+        assert response.status_code == 401, f"unexpected status on attempt {attempt + 1}"
+
+    blocked = client.post(
+        "/login",
+        data={"email": "missing@example.com", "password": "wrong-password"},
+        headers={"X-Forwarded-For": target_ip},
+        follow_redirects=False,
+    )
+    assert blocked.status_code == 429
+    assert "too many requests" in blocked.text.lower()
+
+
 def test_register_rejects_admin_role(client):
     _reset_web_tables()
 
@@ -39,6 +79,7 @@ def test_register_rejects_admin_role(client):
             "role": "admin",
             "name": "Root",
         },
+        headers=_forwarded_for("198.51.100.31"),
         follow_redirects=False,
     )
     assert response.status_code == 400
@@ -64,6 +105,7 @@ def test_volunteer_registration_and_dashboard(client):
             "role": "volunteer",
             "name": "Alice",
         },
+        headers=_forwarded_for("198.51.100.32"),
         follow_redirects=False,
     )
     assert r.status_code == 303
@@ -90,6 +132,7 @@ def test_coordinator_registration_and_dashboard(client):
             "name": "Bob",
             "org_name": "Helping Hands",
         },
+        headers=_forwarded_for("198.51.100.33"),
         follow_redirects=False,
     )
     assert r.status_code == 303
@@ -112,6 +155,7 @@ def test_login_rejects_bad_password(client):
             "role": "volunteer",
             "name": "Carol",
         },
+        headers=_forwarded_for("198.51.100.34"),
     )
     # Log out to clear cookie from TestClient
     client.post("/logout")
@@ -137,6 +181,7 @@ def test_login_ignores_unsafe_next_redirects(client):
             "role": "volunteer",
             "name": "Eve",
         },
+        headers=_forwarded_for("198.51.100.35"),
     )
 
     client.post("/logout")
@@ -180,6 +225,7 @@ def test_role_isolation_volunteer_cannot_see_coordinator(client):
             "role": "volunteer",
             "name": "Dave",
         },
+        headers=_forwarded_for("198.51.100.36"),
     )
     # Volunteer visits coordinator dashboard -> redirect to / (then to their own dashboard)
     r = client.get("/c/", follow_redirects=False)
@@ -200,6 +246,7 @@ def test_coordinator_rejects_invalid_task_status(client):
             "name": "Coord",
             "org_name": "Status Org",
         },
+        headers=_forwarded_for("198.51.100.37"),
     )
     client.post(
         "/c/tasks/new",
@@ -267,6 +314,7 @@ def test_volunteer_cannot_apply_to_closed_task(client):
             "role": "volunteer",
             "name": "Closed Apply",
         },
+        headers=_forwarded_for("198.51.100.38"),
     )
 
     response = client.post(f"/v/tasks/{task_id}/apply", follow_redirects=False)

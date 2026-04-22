@@ -1,9 +1,11 @@
 """Coordinator-facing pages."""
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import RedirectResponse
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -24,6 +26,8 @@ from app.web.forms import (
 )
 from app.web.options import ASSIGNMENT_ACTIONS, SKILL_OPTIONS, TASK_STATUSES
 from app.web.templates import context, templates
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -449,7 +453,11 @@ async def ingest_report(request: Request, db: DbSession):
 
         matched_volunteers = find_best_volunteers(task, db)
         db.commit()
-    except Exception:
+    except RateLimitExceeded:
+        # Let the rate-limit handler produce its own 429 response.
+        raise
+    except SQLAlchemyError:
+        logger.exception("ingest_report failed with a database error")
         db.rollback()
         template = "partials/ingest_result.html" if is_hx_request else "coordinator/ingest.html"
         return templates.TemplateResponse(

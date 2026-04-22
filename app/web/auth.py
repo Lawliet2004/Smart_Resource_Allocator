@@ -8,13 +8,19 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    dummy_verify_password,
+    hash_password,
+    verify_password,
+)
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.volunteer import Volunteer
 from app.web.deps import SESSION_COOKIE, DbSession, get_current_user, role_home
 from app.web.forms import form_value, parse_urlencoded_form
 from app.web.options import ROLE_OPTIONS
+from app.web.rate_limit import get_client_ip_key, limiter
 from app.web.templates import context, templates
 
 router = APIRouter()
@@ -60,6 +66,7 @@ def register_page(request: Request, db: DbSession):
 
 
 @router.post("/register")
+@limiter.limit(settings.AUTH_REGISTER_RATE_LIMIT, key_func=get_client_ip_key)
 async def register(request: Request, db: DbSession):
     form = await parse_urlencoded_form(request)
     email = form_value(form, "email").lower()
@@ -136,8 +143,6 @@ async def register(request: Request, db: DbSession):
             status_code=status.HTTP_409_CONFLICT,
         )
 
-    db.refresh(user)
-
     response = RedirectResponse(role_home(user), status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         SESSION_COOKIE,
@@ -159,6 +164,7 @@ def login_page(request: Request, db: DbSession):
 
 
 @router.post("/login")
+@limiter.limit(settings.AUTH_LOGIN_RATE_LIMIT, key_func=get_client_ip_key)
 async def login(request: Request, db: DbSession):
     form = await parse_urlencoded_form(request)
     email = form_value(form, "email").lower()
@@ -178,17 +184,33 @@ async def login(request: Request, db: DbSession):
 
     user = db.scalar(select(User).where(User.email == email))
     home_path = role_home(user) if user is not None else "/login"
+    # Always run a bcrypt verification so response time does not reveal
+    # whether the account exists. When the user is missing, burn the same
+    # amount of CPU on a dummy hash instead.
+    if user is None:
+        dummy_verify_password()
+        password_ok = False
+    else:
+        password_ok = verify_password(password, user.password_hash)
+
     if (
         user is None
         or not user.is_active
         or home_path == "/login"
-        or not verify_password(password, user.password_hash)
+        or not password_ok
     ):
         return templates.TemplateResponse(
             "auth/login.html",
             context(request, error="Email or password is incorrect."),
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
+
+    # Only honor next_path if it points into the user's own role area —
+    # otherwise fall back to their role home. Prevents a low-privilege user
+    # from being redirected into a higher-privilege URL that would just
+    # bounce them back anyway (and leaks the attempted path).
+    if next_path and not next_path.startswith(home_path):
+        next_path = ""
 
     response = RedirectResponse(next_path or home_path, status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
