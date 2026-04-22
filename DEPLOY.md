@@ -16,6 +16,7 @@ Optional tuning variables:
 - AUTH_LOGIN_RATE_LIMIT (default: `10/minute`)
 - AUTH_REGISTER_RATE_LIMIT (default: `5/minute`)
 - INGEST_RATE_LIMIT (default: `30/minute`)
+- TRUST_FORWARDED_HEADERS (default: `false`) — set to `true` **only** when the app runs behind a trusted reverse proxy (Caddy, nginx, Fly proxy, Cloudflare Tunnel, etc.) that overwrites `X-Forwarded-For`. Leaving it `false` when directly exposed prevents clients from spoofing the header to bypass rate limits.
 
 ## Build and run with Docker Compose (production file)
 

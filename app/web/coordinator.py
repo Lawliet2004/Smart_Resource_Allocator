@@ -465,6 +465,18 @@ async def ingest_report(request: Request, db: DbSession):
             context(request, user, error="Unable to process field report right now."),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+    except Exception:
+        # Any other unexpected failure (extractor bug, matcher bug, bad data) —
+        # log it and show the same generic error so HTMX callers still get the
+        # partial swap instead of a raw 500 body.
+        logger.exception("ingest_report failed with an unexpected error")
+        db.rollback()
+        template = "partials/ingest_result.html" if is_hx_request else "coordinator/ingest.html"
+        return templates.TemplateResponse(
+            template,
+            context(request, user, error="Unable to process field report right now."),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
     if not is_hx_request:
         return RedirectResponse(

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import select
@@ -13,6 +15,8 @@ from app.services.extractor import extract_task_data
 from app.services.matcher import find_best_volunteers
 from app.web.deps import get_current_user
 from app.web.rate_limit import limiter, user_or_ip_key
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -72,6 +76,16 @@ def ingest_field_report(
         # Let FastAPI / slowapi handlers convert these to proper 4xx responses.
         raise
     except SQLAlchemyError as e:
+        logger.exception("api ingest failed with a database error")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process field report.",
+        ) from e
+    except Exception as e:
+        # Unexpected failure (extractor/matcher bug, bad data). Log for
+        # debugging and return a sanitized 500 to the client.
+        logger.exception("api ingest failed with an unexpected error")
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -106,11 +106,12 @@ def matched_open_tasks(db: DbSession, volunteer: Volunteer) -> list[tuple[Task, 
         required_skills = normalized_skill_set(task.required_skills)
         if required_skills and not required_skills.intersection(volunteer_skills):
             continue
-        # Symmetric location filter: if the task specifies a location, the
-        # volunteer must have a matching one. Tasks without a location are
-        # always eligible.
+        # Symmetric location filter: if the task specifies a real location,
+        # the volunteer must have a matching one. Tasks without a location —
+        # or with the extractor sentinel "unknown" — are always eligible, to
+        # stay consistent with app/services/matcher.py.
         task_location = (task.location or "").strip().casefold()
-        if task_location and task_location != volunteer_location:
+        if task_location and task_location != "unknown" and task_location != volunteer_location:
             continue
         ranked.append((task, task_match_score(task, volunteer)))
     return sorted(ranked, key=lambda item: item[1], reverse=True)
