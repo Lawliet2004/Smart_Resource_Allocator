@@ -102,7 +102,7 @@ def extract_task_data(raw_text: str) -> dict:
         
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         response = client.models.generate_content(
-            model='gemini-3-flash',
+            model='gemini-2.5-flash',
             contents=f"Extract task details from this field report:\n\n{raw_text}",
             config={
                 'response_mime_type': 'application/json',
