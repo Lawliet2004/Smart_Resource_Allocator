@@ -33,4 +33,7 @@ EXPOSE 8000
 
 USER appuser
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use shell form so ${PORT} expands at runtime. Hosts like Render / Fly /
+# Railway inject a PORT env var the app must bind to; fall back to 8000 for
+# local docker compose runs where no PORT is set.
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

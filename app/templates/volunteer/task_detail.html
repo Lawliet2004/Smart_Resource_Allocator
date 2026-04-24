@@ -10,7 +10,10 @@
         <h1 class="text-2xl font-semibold">{{ task.title }}</h1>
         <p class="mt-1 text-sm text-slate-600">{{ task.location or "Location TBD" }}</p>
       </div>
-      <span class="badge">Urgency {{ task.urgency }}</span>
+      <div class="flex gap-2">
+        <span class="badge">Urgency {{ task.urgency }}</span>
+        <span class="badge">People needed: {{ task.people_needed }}</span>
+      </div>
     </div>
     {% if task.description %}
       <p class="mt-5 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ task.description }}</p>

@@ -60,6 +60,7 @@ def ingest_field_report(
             description=extracted_data["description"],
             location=extracted_data["location"],
             urgency=extracted_data["urgency"],
+            people_needed=extracted_data.get("people_needed", 1),
             required_skills=normalize_skills(extracted_data["required_skills"]),
             status="open",
         )

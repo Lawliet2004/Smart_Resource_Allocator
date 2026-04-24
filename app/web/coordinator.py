@@ -55,6 +55,16 @@ def parse_urgency(value: str) -> int | None:
     return None
 
 
+def parse_people_needed(value: str) -> int | None:
+    try:
+        people_needed = int(value)
+    except ValueError:
+        return None
+    if people_needed >= 1:
+        return people_needed
+    return None
+
+
 def parse_title(value: str) -> str | None:
     title = value.strip()
     if not title or len(title) > settings.TASK_TITLE_MAX_CHARS:
@@ -184,6 +194,13 @@ async def create_task(request: Request, db: DbSession):
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    people_needed = parse_people_needed(form_value(form, "people_needed", "1"))
+    if people_needed is None:
+        return RedirectResponse(
+            "/c/tasks/new?error=People needed must be at least 1.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
     location = form_value(form, "location")
     if len(location) > MAX_LOCATION_CHARS:
         return RedirectResponse(
@@ -200,6 +217,7 @@ async def create_task(request: Request, db: DbSession):
         latitude=form_float(form, "latitude", min_value=-90, max_value=90),
         longitude=form_float(form, "longitude", min_value=-180, max_value=180),
         urgency=urgency,
+        people_needed=people_needed,
         required_skills=normalize_skills(form_list(form, "required_skills")),
         status="open",
     )
@@ -261,6 +279,14 @@ async def update_task(task_id: int, request: Request, db: DbSession):
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    people_needed_val = str(task.people_needed or 1)
+    people_needed = parse_people_needed(form_value(form, "people_needed", people_needed_val))
+    if people_needed is None:
+        return RedirectResponse(
+            f"/c/tasks/{task.id}/edit?error=People needed must be at least 1.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
     location = form_value(form, "location")
     if len(location) > MAX_LOCATION_CHARS:
         return RedirectResponse(
@@ -274,6 +300,7 @@ async def update_task(task_id: int, request: Request, db: DbSession):
     task.latitude = form_float(form, "latitude", min_value=-90, max_value=90)
     task.longitude = form_float(form, "longitude", min_value=-180, max_value=180)
     task.urgency = urgency
+    task.people_needed = people_needed
     task.required_skills = normalize_skills(form_list(form, "required_skills"))
     try:
         db.commit()
@@ -444,6 +471,7 @@ async def ingest_report(request: Request, db: DbSession):
             description=extracted["description"],
             location=extracted["location"],
             urgency=extracted["urgency"],
+            people_needed=extracted.get("people_needed", 1),
             required_skills=normalize_skills(extracted["required_skills"]),
             status="open",
         )

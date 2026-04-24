@@ -25,6 +25,7 @@ class Task(Base):
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     urgency: Mapped[int] = mapped_column(Integer, default=1)  # 1-5
+    people_needed: Mapped[int] = mapped_column(Integer, default=1)
     required_skills: Mapped[list[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(50), default="open", nullable=False, index=True)
 

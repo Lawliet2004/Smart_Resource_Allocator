@@ -29,6 +29,10 @@
         {% endfor %}
       </select>
     </label>
+    <label class="form-field">
+      <span>People Needed</span>
+      <input class="input" type="number" name="people_needed" min="1" value="{{ task.people_needed if task else 1 }}" required>
+    </label>
     <input type="hidden" name="latitude" id="latitude-input" value="{{ task.latitude if task and task.latitude is not none else '' }}">
     <input type="hidden" name="longitude" id="longitude-input" value="{{ task.longitude if task and task.longitude is not none else '' }}">
     <button class="btn-primary" type="submit">Save task</button>

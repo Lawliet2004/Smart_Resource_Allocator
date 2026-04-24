@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
     APP_ENV: str = "dev"
+    GEMINI_API_KEY: str | None = None
 
     # Auth (used from Week 2 onwards)
     JWT_SECRET: str
