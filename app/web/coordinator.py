@@ -120,6 +120,7 @@ def dashboard(request: Request, db: DbSession):
     ownership_filter = (Task.created_by_id == user.id) | (Task.org_id == org.id)
     tasks = db.execute(
         coordinator_task_query(user, org)
+        .where(Task.status != "closed")
         .order_by(Task.id.desc())
         .limit(settings.COORDINATOR_TASK_LIMIT)
     ).scalars().all()
