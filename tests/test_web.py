@@ -2,7 +2,7 @@
 
 from urllib.parse import parse_qs, urlparse
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from app.core.database import SessionLocal
 from app.models.assignment import Assignment
@@ -26,7 +26,6 @@ def _reset_web_tables() -> None:
         db.commit()
     finally:
         db.close()
-
 
 def test_public_pages_render(client):
     assert client.get("/login").status_code == 200
@@ -395,5 +394,115 @@ def test_volunteer_cannot_apply_to_closed_task(client):
     try:
         assignment_count = db.scalar(select(Assignment.id).where(Assignment.task_id == task_id))
         assert assignment_count is None
+    finally:
+        db.close()
+
+
+def test_coordinator_cannot_approve_beyond_task_capacity(client):
+    _reset_web_tables()
+
+    client.post(
+        "/register",
+        data={
+            "consent": "on",
+            "email": "capacity-coord@example.com",
+            "password": "password123",
+            "role": "coordinator",
+            "name": "Capacity Coord",
+            "org_name": "Capacity Org",
+        },
+        headers=_forwarded_for("198.51.100.40"),
+    )
+
+    db = SessionLocal()
+    try:
+        org = db.scalar(select(Organization).where(Organization.name == "Capacity Org"))
+        assert org is not None
+        first_volunteer = Volunteer(name="Approved Volunteer", skills=[])
+        second_volunteer = Volunteer(name="Waiting Volunteer", skills=[])
+        db.add_all([first_volunteer, second_volunteer])
+        db.flush()
+
+        task = Task(
+            org_id=org.id,
+            created_by_id=org.created_by_id,
+            title="One slot task",
+            status="open",
+            people_needed=1,
+        )
+        db.add(task)
+        db.flush()
+
+        db.add(
+            Assignment(task_id=task.id, volunteer_id=first_volunteer.id, status="approved")
+        )
+        waiting = Assignment(task_id=task.id, volunteer_id=second_volunteer.id, status="applied")
+        db.add(waiting)
+        db.commit()
+        waiting_id = waiting.id
+    finally:
+        db.close()
+
+    response = client.post(f"/c/assignments/{waiting_id}/approve", follow_redirects=False)
+    assert response.status_code == 303
+    redirect_parts = urlparse(response.headers["location"])
+    redirect_query = parse_qs(redirect_parts.query)
+    assert redirect_query.get("error") == ["Task already has enough approved volunteers."]
+
+    db = SessionLocal()
+    try:
+        unchanged = db.get(Assignment, waiting_id)
+        assert unchanged is not None
+        assert unchanged.status == "applied"
+    finally:
+        db.close()
+
+
+def test_volunteer_cannot_apply_to_full_task(client):
+    _reset_web_tables()
+
+    db = SessionLocal()
+    try:
+        existing_volunteer = Volunteer(name="Already Approved", skills=[])
+        db.add(existing_volunteer)
+        db.flush()
+
+        task = Task(title="Full Task", status="open", people_needed=1)
+        db.add(task)
+        db.flush()
+        db.add(Assignment(task_id=task.id, volunteer_id=existing_volunteer.id, status="approved"))
+        db.commit()
+        task_id = task.id
+    finally:
+        db.close()
+
+    client.post(
+        "/register",
+        data={
+            "consent": "on",
+            "email": "full-task-volunteer@example.com",
+            "password": "password123",
+            "role": "volunteer",
+            "name": "Full Task Volunteer",
+        },
+        headers=_forwarded_for("198.51.100.41"),
+    )
+
+    detail = client.get(f"/v/tasks/{task_id}")
+    assert detail.status_code == 200
+    assert "Capacity full" in detail.text
+
+    response = client.post(f"/v/tasks/{task_id}/apply", follow_redirects=False)
+    assert response.status_code == 303
+    redirect_parts = urlparse(response.headers["location"])
+    redirect_query = parse_qs(redirect_parts.query)
+    assert redirect_query.get("error") == ["Task already has enough approved volunteers."]
+
+    db = SessionLocal()
+    try:
+        assignment_count = db.scalar(
+            select(func.count(Assignment.id)).where(Assignment.task_id == task_id)
+        )
+        assert assignment_count == 1
     finally:
         db.close()

@@ -12,7 +12,8 @@
       </div>
       <div class="flex gap-2">
         <span class="badge">Urgency {{ task.urgency }}</span>
-        <span class="badge">People needed: {{ task.people_needed }}</span>
+        <span class="badge">Slots {{ capacity.filled }}/{{ capacity.needed }} filled</span>
+        <span class="badge">{{ capacity.remaining }} remaining</span>
       </div>
     </div>
     {% if task.description %}
@@ -31,6 +32,9 @@
     <h2 class="font-semibold">Application</h2>
     {% if assignment %}
       <p class="mt-3 text-sm text-slate-700">Status: <strong>{{ assignment.status }}</strong></p>
+    {% elif capacity.is_full %}
+      <p class="mt-3 text-sm text-slate-700">This task already has enough approved volunteers.</p>
+      <button class="btn-secondary mt-4 w-full opacity-60" type="button" disabled>Capacity full</button>
     {% else %}
       <form method="post" action="/v/tasks/{{ task.id }}/apply" class="mt-4">
         <button class="btn-primary w-full" type="submit">Apply</button>

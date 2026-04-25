@@ -115,13 +115,17 @@
     <h2 class="mb-3 text-lg font-semibold">Tasks</h2>
     <div class="space-y-3">
       {% for task in tasks %}
+        {% set task_capacity = capacity_by_task_id[task.id] %}
         <article class="rounded border border-slate-200 bg-white p-4">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 class="font-semibold">{{ task.title }}</h3>
               <p class="mt-1 text-sm text-slate-600">{{ task.location or "Location TBD" }}</p>
             </div>
-            <span class="badge">{{ task.status }}</span>
+            <div class="flex flex-wrap gap-2">
+              <span class="badge">{{ task.status }}</span>
+              <span class="badge">Slots {{ task_capacity.filled }}/{{ task_capacity.needed }}</span>
+            </div>
           </div>
           {% if task.description %}
             <p class="mt-3 line-clamp-2 text-sm text-slate-700">{{ task.description }}</p>
@@ -156,13 +160,21 @@
     <h2 class="mb-3 text-lg font-semibold">Pending Applications</h2>
     <div class="space-y-3">
       {% for assignment, task, volunteer in pending_applications %}
+        {% set task_capacity = capacity_by_task_id[task.id] %}
         <article class="rounded border border-slate-200 bg-white p-4">
           <h3 class="font-semibold">{{ volunteer.name }}</h3>
           <p class="mt-1 text-sm text-slate-600">{{ task.title }}</p>
+          <p class="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+            Slots {{ task_capacity.filled }}/{{ task_capacity.needed }} filled
+          </p>
           <div class="mt-3 flex flex-wrap gap-2">
-            <form method="post" action="/c/assignments/{{ assignment.id }}/approve">
-              <button class="btn-primary" type="submit">Approve</button>
-            </form>
+            {% if task_capacity.is_full %}
+              <button class="btn-secondary opacity-60" type="button" disabled>Capacity full</button>
+            {% else %}
+              <form method="post" action="/c/assignments/{{ assignment.id }}/approve">
+                <button class="btn-primary" type="submit">Approve</button>
+              </form>
+            {% endif %}
             <form method="post" action="/c/assignments/{{ assignment.id }}/reject">
               <button class="btn-secondary" type="submit">Reject</button>
             </form>

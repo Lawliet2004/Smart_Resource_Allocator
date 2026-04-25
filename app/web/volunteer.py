@@ -10,6 +10,7 @@ from app.models.assignment import Assignment
 from app.models.task import Task
 from app.models.user import User
 from app.models.volunteer import Volunteer
+from app.services.capacity import capacity_summaries, capacity_summary, filled_slots_for_task
 from app.web.deps import DbSession, get_current_user, login_path
 from app.web.forms import (
     form_bool,
@@ -100,9 +101,13 @@ def matched_open_tasks(db: DbSession, volunteer: Volunteer) -> list[tuple[Task, 
     )
     tasks = db.execute(stmt).scalars().all()
     ranked: list[tuple[Task, int]] = []
+    capacity_by_task_id = capacity_summaries(tasks, db)
     volunteer_skills = normalized_skill_set(volunteer.skills)
     volunteer_location = (volunteer.location or "").strip().casefold()
     for task in tasks:
+        capacity = capacity_by_task_id.get(task.id)
+        if capacity is not None and capacity["is_full"]:
+            continue
         required_skills = normalized_skill_set(task.required_skills)
         if required_skills and not required_skills.intersection(volunteer_skills):
             continue
@@ -134,13 +139,15 @@ def dashboard(request: Request, db: DbSession):
         .order_by(Assignment.applied_at.desc())
         .limit(min(5, settings.VOLUNTEER_ASSIGNMENTS_LIMIT))
     ).all()
+    matched_tasks = matched_open_tasks(db, profile)[:5]
     return templates.TemplateResponse(
         "volunteer/dashboard.html",
         context(
             request,
             user,
             profile=profile,
-            matched_tasks=matched_open_tasks(db, profile)[:5],
+            matched_tasks=matched_tasks,
+            capacity_by_task_id=capacity_summaries((task for task, _score in matched_tasks), db),
             assignments=assignments,
             assignment_count=assignment_count,
         ),
@@ -202,9 +209,16 @@ def tasks_page(request: Request, db: DbSession):
         return user
 
     profile = get_or_create_profile(user, db)
+    matched_tasks = matched_open_tasks(db, profile)
     return templates.TemplateResponse(
         "volunteer/tasks.html",
-        context(request, user, profile=profile, matched_tasks=matched_open_tasks(db, profile)),
+        context(
+            request,
+            user,
+            profile=profile,
+            matched_tasks=matched_tasks,
+            capacity_by_task_id=capacity_summaries((task for task, _score in matched_tasks), db),
+        ),
     )
 
 
@@ -234,9 +248,17 @@ def task_detail(task_id: int, request: Request, db: DbSession):
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    capacity = capacity_summary(task, filled_slots_for_task(db, task.id))
     return templates.TemplateResponse(
         "volunteer/task_detail.html",
-        context(request, user, task=task, profile=profile, assignment=assignment),
+        context(
+            request,
+            user,
+            task=task,
+            profile=profile,
+            assignment=assignment,
+            capacity=capacity,
+        ),
     )
 
 
@@ -264,12 +286,24 @@ def apply_to_task(task_id: int, request: Request, db: DbSession):
             Assignment.volunteer_id == profile.id,
         )
     )
-    if existing is None:
-        db.add(Assignment(task_id=task.id, volunteer_id=profile.id, status="applied"))
-        try:
-            db.commit()
-        except IntegrityError:
-            db.rollback()
+    if existing is not None:
+        return RedirectResponse(
+            f"/v/tasks/{task.id}?message=Application already submitted.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    capacity = capacity_summary(task, filled_slots_for_task(db, task.id))
+    if capacity["is_full"]:
+        return RedirectResponse(
+            f"/v/tasks/{task.id}?error=Task already has enough approved volunteers.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    db.add(Assignment(task_id=task.id, volunteer_id=profile.id, status="applied"))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
 
     return RedirectResponse(
         f"/v/tasks/{task.id}?message=Application submitted.",

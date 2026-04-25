@@ -16,6 +16,7 @@ from app.models.organization import Organization
 from app.models.task import Task
 from app.models.user import User
 from app.models.volunteer import Volunteer
+from app.services.capacity import capacity_summaries, capacity_summary, filled_slots_for_task
 from app.services.extractor import extract_task_data
 from app.services.matcher import find_best_volunteers
 from app.web.deps import DbSession, get_current_user, login_path
@@ -239,6 +240,10 @@ def dashboard(request: Request, db: DbSession):
         .order_by(Assignment.applied_at.desc())
         .limit(settings.COORDINATOR_PENDING_LIMIT)
     ).all()
+    capacity_by_task_id = capacity_summaries(
+        [*tasks, *(task for _assignment, task, _volunteer in pending_applications)],
+        db,
+    )
 
     return templates.TemplateResponse(
         "coordinator/dashboard.html",
@@ -248,6 +253,7 @@ def dashboard(request: Request, db: DbSession):
             organization=org,
             tasks=tasks,
             pending_applications=pending_applications,
+            capacity_by_task_id=capacity_by_task_id,
             analytics=coordinator_analytics(user, org, db),
         ),
     )
@@ -452,9 +458,10 @@ def applicants_page(task_id: int, request: Request, db: DbSession):
         .order_by(Assignment.applied_at.desc())
         .limit(settings.APPLICANTS_LIMIT)
     ).all()
+    capacity = capacity_summary(task, filled_slots_for_task(db, task.id))
     return templates.TemplateResponse(
         "coordinator/applicants.html",
-        context(request, user, task=task, applications=applications),
+        context(request, user, task=task, applications=applications, capacity=capacity),
     )
 
 
@@ -485,6 +492,12 @@ def decide_assignment(assignment_id: int, action: str, request: Request, db: DbS
         if assignment.status != "applied":
             return RedirectResponse(
                 f"/c/tasks/{task.id}/applicants?error=Only applied assignments can be approved.",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        capacity = capacity_summary(task, filled_slots_for_task(db, task.id))
+        if capacity["is_full"]:
+            return RedirectResponse(
+                f"/c/tasks/{task.id}/applicants?error=Task already has enough approved volunteers.",
                 status_code=status.HTTP_303_SEE_OTHER,
             )
         assignment.status = "approved"
