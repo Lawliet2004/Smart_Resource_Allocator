@@ -1,6 +1,7 @@
 """Coordinator-facing pages."""
 
 import logging
+from collections import Counter
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, status
@@ -110,6 +111,109 @@ def owned_task(task_id: int, user: User, org: Organization, db: DbSession) -> Ta
     return db.scalar(coordinator_task_query(user, org).where(Task.id == task_id))
 
 
+def percentage(numerator: int, denominator: int) -> int:
+    if denominator <= 0:
+        return 0
+    return round((numerator / denominator) * 100)
+
+
+def coordinator_analytics(user: User, org: Organization, db: DbSession) -> dict[str, object]:
+    ownership_filter = (Task.created_by_id == user.id) | (Task.org_id == org.id)
+
+    task_status_counts = {
+        status_value: count
+        for status_value, count in db.execute(
+            select(Task.status, func.count(Task.id)).where(ownership_filter).group_by(Task.status)
+        ).all()
+    }
+    assignment_status_counts = {
+        status_value: count
+        for status_value, count in db.execute(
+            select(Assignment.status, func.count(Assignment.id))
+            .join(Task, Assignment.task_id == Task.id)
+            .where(ownership_filter)
+            .group_by(Assignment.status)
+        ).all()
+    }
+
+    total_tasks = sum(task_status_counts.values())
+    total_applications = sum(assignment_status_counts.values())
+    active_tasks = task_status_counts.get("open", 0) + task_status_counts.get("pending", 0)
+    completed_tasks = task_status_counts.get("completed", 0)
+    archived_tasks = task_status_counts.get("closed", 0) + task_status_counts.get("cancelled", 0)
+    pending_applications = assignment_status_counts.get("applied", 0)
+    approved_assignments = assignment_status_counts.get("approved", 0)
+    rejected_assignments = assignment_status_counts.get("rejected", 0)
+    completed_assignments = assignment_status_counts.get("completed", 0)
+    filled_tasks = db.scalar(
+        select(func.count(func.distinct(Assignment.task_id)))
+        .join(Task, Assignment.task_id == Task.id)
+        .where(ownership_filter, Assignment.status.in_(["approved", "completed"]))
+    ) or 0
+
+    skill_counts: Counter[str] = Counter()
+    for (skills,) in db.execute(select(Task.required_skills).where(ownership_filter)).all():
+        for skill in skills or []:
+            if isinstance(skill, str):
+                skill_counts[skill] += 1
+
+    top_skills = [
+        {"skill": skill, "count": count}
+        for skill, count in sorted(
+            skill_counts.items(), key=lambda item: (-item[1], item[0])
+        )[:5]
+    ]
+    if total_tasks:
+        avg_applications_per_task = f"{(total_applications / total_tasks):.1f}"
+    else:
+        avg_applications_per_task = "0.0"
+
+    return {
+        "total_tasks": total_tasks,
+        "active_tasks": active_tasks,
+        "completed_tasks": completed_tasks,
+        "archived_tasks": archived_tasks,
+        "total_applications": total_applications,
+        "pending_applications": pending_applications,
+        "approved_assignments": approved_assignments,
+        "rejected_assignments": rejected_assignments,
+        "completed_assignments": completed_assignments,
+        "fill_rate": percentage(filled_tasks, total_tasks),
+        "completion_rate": percentage(completed_tasks, total_tasks),
+        "avg_applications_per_task": avg_applications_per_task,
+        "task_status_rows": [
+            {
+                "label": label,
+                "count": task_status_counts.get(status_value, 0),
+                "percent": percentage(task_status_counts.get(status_value, 0), total_tasks),
+            }
+            for status_value, label in [
+                ("open", "Open"),
+                ("pending", "Pending"),
+                ("completed", "Completed"),
+                ("closed", "Closed"),
+                ("cancelled", "Cancelled"),
+            ]
+        ],
+        "application_status_rows": [
+            {
+                "label": label,
+                "count": assignment_status_counts.get(status_value, 0),
+                "percent": percentage(
+                    assignment_status_counts.get(status_value, 0), total_applications
+                ),
+            }
+            for status_value, label in [
+                ("applied", "Pending"),
+                ("approved", "Approved"),
+                ("rejected", "Rejected"),
+                ("completed", "Completed"),
+            ]
+        ],
+        "top_skills": top_skills,
+    }
+
+
 @router.get("/")
 def dashboard(request: Request, db: DbSession):
     user = require_coordinator(request, db)
@@ -136,17 +240,6 @@ def dashboard(request: Request, db: DbSession):
         .limit(settings.COORDINATOR_PENDING_LIMIT)
     ).all()
 
-    open_count = db.scalar(
-        select(func.count(Task.id)).where(ownership_filter, Task.status.in_(["open", "pending"]))
-    ) or 0
-    completed_count = db.scalar(
-        select(func.count(Task.id)).where(ownership_filter, Task.status == "completed")
-    ) or 0
-    pending_count = db.scalar(
-        select(func.count(Assignment.id))
-        .join(Task, Assignment.task_id == Task.id)
-        .where(ownership_filter, Assignment.status == "applied")
-    ) or 0
     return templates.TemplateResponse(
         "coordinator/dashboard.html",
         context(
@@ -155,9 +248,7 @@ def dashboard(request: Request, db: DbSession):
             organization=org,
             tasks=tasks,
             pending_applications=pending_applications,
-            pending_count=pending_count,
-            open_count=open_count,
-            completed_count=completed_count,
+            analytics=coordinator_analytics(user, org, db),
         ),
     )
 
