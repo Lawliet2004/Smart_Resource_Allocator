@@ -142,3 +142,17 @@
   height: 18rem;
   overflow: hidden;
 }
+
+.progress-bar-bg {
+  background-color: rgb(241 245 249);
+  border-radius: 9999px;
+  height: 0.5rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.progress-bar-fill {
+  border-radius: 9999px;
+  height: 100%;
+  transition: width 0.3s ease;
+}

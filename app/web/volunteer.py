@@ -145,11 +145,18 @@ def task_match_score(task: Task, volunteer: Volunteer) -> int:
     return score
 
 
-def matched_open_tasks(db: DbSession, volunteer: Volunteer) -> list[tuple[Task, int]]:
+def matched_open_tasks(
+    db: DbSession, volunteer: Volunteer, q: str | None = None
+) -> list[tuple[Task, int]]:
     stmt = (
         select(Task)
         .where(Task.status.in_(["open", "pending"]))
-        .order_by(Task.urgency.desc(), Task.id.desc())
+    )
+    if q:
+        stmt = stmt.where(Task.title.ilike(f"%{q}%"))
+        
+    stmt = (
+        stmt.order_by(Task.urgency.desc(), Task.id.desc())
         .limit(settings.VOLUNTEER_TASK_SCAN_LIMIT)
     )
     tasks = db.execute(stmt).scalars().all()
@@ -176,12 +183,26 @@ def matched_open_tasks(db: DbSession, volunteer: Volunteer) -> list[tuple[Task, 
 
 
 @router.get("/")
-def dashboard(request: Request, db: DbSession):
+def dashboard(request: Request, db: DbSession, q: str | None = None):
     user = require_volunteer(request, db)
     if isinstance(user, RedirectResponse):
         return user
 
     profile = get_or_create_profile(user, db)
+    matched_tasks = matched_open_tasks(db, profile, q=q)[:5]
+    capacity_by_task_id = capacity_summaries((task for task, _score in matched_tasks), db)
+    
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            "partials/matched_tasks_list.html",
+            context(
+                request,
+                user,
+                matched_tasks=matched_tasks,
+                capacity_by_task_id=capacity_by_task_id,
+            ),
+        )
+
     assignment_count = db.scalar(
         select(func.count(Assignment.id)).where(Assignment.volunteer_id == profile.id)
     ) or 0
@@ -192,7 +213,7 @@ def dashboard(request: Request, db: DbSession):
         .order_by(Assignment.applied_at.desc())
         .limit(min(5, settings.VOLUNTEER_ASSIGNMENTS_LIMIT))
     ).all()
-    matched_tasks = matched_open_tasks(db, profile)[:5]
+    
     return templates.TemplateResponse(
         "volunteer/dashboard.html",
         context(
@@ -200,7 +221,7 @@ def dashboard(request: Request, db: DbSession):
             user,
             profile=profile,
             matched_tasks=matched_tasks,
-            capacity_by_task_id=capacity_summaries((task for task, _score in matched_tasks), db),
+            capacity_by_task_id=capacity_by_task_id,
             assignments=assignments,
             assignment_count=assignment_count,
         ),
