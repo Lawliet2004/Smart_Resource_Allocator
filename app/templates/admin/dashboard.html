@@ -22,6 +22,21 @@
   </div>
 </section>
 
+<section class="mt-6 grid gap-4 md:grid-cols-3">
+  <div class="metric">
+    <span>Total Tasks</span>
+    <strong>{{ task_count }}</strong>
+  </div>
+  <div class="metric">
+    <span>Completed Tasks</span>
+    <strong>{{ completed_task_count }}</strong>
+  </div>
+  <div class="metric">
+    <span>Total Assignments</span>
+    <strong>{{ assignment_count }}</strong>
+  </div>
+</section>
+
 <section class="mt-8 grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
   <div>
     <h2 class="mb-3 text-lg font-semibold">Users</h2>

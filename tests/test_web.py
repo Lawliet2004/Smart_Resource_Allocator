@@ -6,7 +6,9 @@ from sqlalchemy import select, text
 
 from app.core.database import SessionLocal
 from app.models.assignment import Assignment
+from app.models.organization import Organization
 from app.models.task import Task
+from app.models.volunteer import Volunteer
 
 
 def _forwarded_for(ip: str) -> dict[str, str]:
@@ -141,6 +143,71 @@ def test_coordinator_registration_and_dashboard(client):
     dashboard = client.get("/c/")
     assert dashboard.status_code == 200
     assert "Helping Hands" in dashboard.text or "Dashboard" in dashboard.text
+
+
+def test_coordinator_dashboard_shows_analytics_metrics(client):
+    _reset_web_tables()
+
+    client.post(
+        "/register",
+        data={
+            "consent": "on",
+            "email": "analytics-coord@example.com",
+            "password": "password123",
+            "role": "coordinator",
+            "name": "Analytics Coord",
+            "org_name": "Analytics Org",
+        },
+        headers=_forwarded_for("198.51.100.39"),
+    )
+
+    db = SessionLocal()
+    try:
+        org = db.scalar(select(Organization).where(Organization.name == "Analytics Org"))
+        assert org is not None
+        volunteer = Volunteer(name="Metrics Volunteer", skills=["medical_assistance"])
+        db.add(volunteer)
+        db.flush()
+
+        active_task = Task(
+            org_id=org.id,
+            created_by_id=org.created_by_id,
+            title="Medical camp support",
+            status="open",
+            required_skills=["medical_assistance"],
+        )
+        completed_task = Task(
+            org_id=org.id,
+            created_by_id=org.created_by_id,
+            title="Logistics wrap-up",
+            status="completed",
+            required_skills=["logistics"],
+        )
+        db.add_all([active_task, completed_task])
+        db.flush()
+
+        db.add_all(
+            [
+                Assignment(task_id=active_task.id, volunteer_id=volunteer.id, status="applied"),
+                Assignment(
+                    task_id=completed_task.id,
+                    volunteer_id=volunteer.id,
+                    status="completed",
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    dashboard = client.get("/c/")
+    assert dashboard.status_code == 200
+    assert "Analytics" in dashboard.text
+    assert "Fill rate" in dashboard.text
+    assert "50%" in dashboard.text
+    assert "Avg/task" in dashboard.text
+    assert "1.0" in dashboard.text
+    assert "Medical assistance" in dashboard.text
 
 
 def test_login_rejects_bad_password(client):

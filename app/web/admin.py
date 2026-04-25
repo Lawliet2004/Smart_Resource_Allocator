@@ -5,7 +5,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select, text
 
 from app.core.config import settings
+from app.models.assignment import Assignment
 from app.models.organization import Organization
+from app.models.task import Task
 from app.models.user import User
 from app.web.deps import DbSession, get_current_user, login_path
 from app.web.templates import context, templates
@@ -44,6 +46,11 @@ def dashboard(request: Request, db: DbSession):
     )
     user_count = db.scalar(select(func.count(User.id))) or 0
     organization_count = db.scalar(select(func.count(Organization.id))) or 0
+    task_count = db.scalar(select(func.count(Task.id))) or 0
+    completed_task_count = db.scalar(
+        select(func.count(Task.id)).where(Task.status == "completed")
+    ) or 0
+    assignment_count = db.scalar(select(func.count(Assignment.id))) or 0
     db_result = db.execute(text("SELECT 1")).scalar()
     return templates.TemplateResponse(
         "admin/dashboard.html",
@@ -54,6 +61,9 @@ def dashboard(request: Request, db: DbSession):
             organizations=organizations,
             user_count=user_count,
             organization_count=organization_count,
+            task_count=task_count,
+            completed_task_count=completed_task_count,
+            assignment_count=assignment_count,
             db_ok=db_result == 1,
         ),
     )
