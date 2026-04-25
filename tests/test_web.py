@@ -27,6 +27,7 @@ def _reset_web_tables() -> None:
     finally:
         db.close()
 
+
 def test_public_pages_render(client):
     assert client.get("/login").status_code == 200
     assert client.get("/register").status_code == 200
@@ -118,6 +119,83 @@ def test_volunteer_registration_and_dashboard(client):
     assert dashboard.status_code == 200
     assert "Volunteer Dashboard" in dashboard.text
     assert "Alice" in dashboard.text
+
+
+def test_volunteer_can_filter_matched_tasks(client):
+    _reset_web_tables()
+
+    client.post(
+        "/register",
+        data={
+            "consent": "on",
+            "email": "filter-volunteer@example.com",
+            "password": "password123",
+            "role": "volunteer",
+            "name": "Filter Volunteer",
+        },
+        headers=_forwarded_for("198.51.100.42"),
+    )
+
+    db = SessionLocal()
+    try:
+        volunteer = db.scalar(select(Volunteer).where(Volunteer.name == "Filter Volunteer"))
+        assert volunteer is not None
+        volunteer.location = "Downtown"
+        volunteer.skills = ["medical_assistance", "food_distribution"]
+        db.add_all(
+            [
+                Task(
+                    title="Medical Camp",
+                    description="First aid support for residents",
+                    location="Downtown",
+                    status="open",
+                    urgency=5,
+                    required_skills=["medical_assistance"],
+                    people_needed=2,
+                ),
+                Task(
+                    title="Food Drive",
+                    description="Pack and distribute supplies",
+                    location="Downtown",
+                    status="open",
+                    urgency=2,
+                    required_skills=["food_distribution"],
+                    people_needed=2,
+                ),
+                Task(
+                    title="Water Rescue",
+                    location="Downtown",
+                    status="open",
+                    urgency=5,
+                    required_skills=["water_rescue"],
+                    people_needed=2,
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    all_tasks = client.get("/v/tasks")
+    assert all_tasks.status_code == 200
+    assert "Medical Camp" in all_tasks.text
+    assert "Food Drive" in all_tasks.text
+    assert "Water Rescue" not in all_tasks.text
+
+    skill_filtered = client.get("/v/tasks?skill=medical_assistance")
+    assert skill_filtered.status_code == 200
+    assert "Medical Camp" in skill_filtered.text
+    assert "Food Drive" not in skill_filtered.text
+
+    search_filtered = client.get("/v/tasks?q=Food")
+    assert search_filtered.status_code == 200
+    assert "Food Drive" in search_filtered.text
+    assert "Medical Camp" not in search_filtered.text
+
+    urgency_filtered = client.get("/v/tasks?urgency=4")
+    assert urgency_filtered.status_code == 200
+    assert "Medical Camp" in urgency_filtered.text
+    assert "Food Drive" not in urgency_filtered.text
 
 
 def test_coordinator_registration_and_dashboard(client):

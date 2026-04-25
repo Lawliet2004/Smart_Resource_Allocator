@@ -10,6 +10,44 @@
   </div>
 </section>
 
+<form method="get" action="/v/tasks" class="mb-6 rounded border border-slate-200 bg-white p-4">
+  <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+    <label class="form-field lg:col-span-2">
+      <span>Search</span>
+      <input class="input" type="search" name="q" maxlength="100" value="{{ filters.q }}" placeholder="Title or description">
+    </label>
+    <label class="form-field">
+      <span>Skill</span>
+      <select class="input" name="skill">
+        <option value="">Any skill</option>
+        {% for value, label in skills %}
+          <option value="{{ value }}" {% if filters.skill == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-field">
+      <span>Minimum urgency</span>
+      <select class="input" name="urgency">
+        <option value="">Any urgency</option>
+        {% for urgency in [1, 2, 3, 4, 5] %}
+          <option value="{{ urgency }}" {% if filters.urgency == urgency %}selected{% endif %}>{{ urgency }}+</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-field">
+      <span>Location contains</span>
+      <input class="input" type="text" name="location" maxlength="255" value="{{ filters.location }}" placeholder="Area or city">
+    </label>
+  </div>
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm text-slate-600">Showing {{ matched_tasks|length }} task{{ '' if matched_tasks|length == 1 else 's' }}.</p>
+    <div class="flex gap-2">
+      <a class="btn-secondary" href="/v/tasks">Clear</a>
+      <button class="btn-primary" type="submit">Apply filters</button>
+    </div>
+  </div>
+</form>
+
 <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
   {% for task, score in matched_tasks %}
     {% set task_capacity = capacity_by_task_id[task.id] %}

@@ -28,6 +28,7 @@ VALID_SKILLS = {value for value, _label in SKILL_OPTIONS}
 MAX_NAME_CHARS = 255
 MAX_PHONE_CHARS = 50
 MAX_LOCATION_CHARS = 255
+MAX_TASK_SEARCH_CHARS = 100
 
 
 def normalize_skills(skills: list[str]) -> list[str]:
@@ -46,6 +47,58 @@ def normalized_skill_set(skills: list[object] | None) -> set[str]:
         for skill in (skills or [])
         if isinstance(skill, str) and skill.strip()
     }
+
+
+def parse_urgency_filter(value: str) -> int | None:
+    if not value:
+        return None
+    try:
+        urgency = int(value)
+    except ValueError:
+        return None
+    if 1 <= urgency <= 5:
+        return urgency
+    return None
+
+
+def volunteer_task_filters(request: Request) -> dict[str, str | int | None]:
+    query = request.query_params.get("q", "").strip()
+    skill = request.query_params.get("skill", "").strip()
+    location = request.query_params.get("location", "").strip()
+    urgency = request.query_params.get("urgency", "").strip()
+    if skill and skill not in VALID_SKILLS:
+        skill = ""
+    parsed_urgency = parse_urgency_filter(urgency)
+    return {
+        "q": query,
+        "skill": skill,
+        "location": location,
+        "urgency": parsed_urgency,
+    }
+
+
+def filter_matched_tasks(
+    matched_tasks: list[tuple[Task, int]],
+    filters: dict[str, str | int | None],
+) -> list[tuple[Task, int]]:
+    query = str(filters.get("q") or "").casefold()
+    skill = str(filters.get("skill") or "")
+    location = str(filters.get("location") or "").casefold()
+    urgency = filters.get("urgency")
+    filtered: list[tuple[Task, int]] = []
+    for task, score in matched_tasks:
+        if query:
+            searchable = f"{task.title} {task.description or ''}".casefold()
+            if query not in searchable:
+                continue
+        if skill and skill not in (task.required_skills or []):
+            continue
+        if location and location not in (task.location or "").casefold():
+            continue
+        if isinstance(urgency, int) and (task.urgency or 1) < urgency:
+            continue
+        filtered.append((task, score))
+    return filtered
 
 
 def require_volunteer(request: Request, db: DbSession) -> User | RedirectResponse:
@@ -209,7 +262,18 @@ def tasks_page(request: Request, db: DbSession):
         return user
 
     profile = get_or_create_profile(user, db)
-    matched_tasks = matched_open_tasks(db, profile)
+    filters = volunteer_task_filters(request)
+    if len(str(filters["q"] or "")) > MAX_TASK_SEARCH_CHARS:
+        return RedirectResponse(
+            "/v/tasks?error=Search is too long.", status_code=status.HTTP_303_SEE_OTHER
+        )
+    if len(str(filters["location"] or "")) > MAX_LOCATION_CHARS:
+        return RedirectResponse(
+            "/v/tasks?error=Location filter is too long.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    matched_tasks = filter_matched_tasks(matched_open_tasks(db, profile), filters)
     return templates.TemplateResponse(
         "volunteer/tasks.html",
         context(
@@ -218,6 +282,8 @@ def tasks_page(request: Request, db: DbSession):
             profile=profile,
             matched_tasks=matched_tasks,
             capacity_by_task_id=capacity_summaries((task for task, _score in matched_tasks), db),
+            filters=filters,
+            skills=SKILL_OPTIONS,
         ),
     )
 
