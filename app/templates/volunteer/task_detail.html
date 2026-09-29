@@ -37,6 +37,7 @@
       <button class="btn-secondary mt-4 w-full opacity-60" type="button" disabled>Capacity full</button>
     {% else %}
       <form method="post" action="/v/tasks/{{ task.id }}/apply" class="mt-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="btn-primary w-full" type="submit">Apply</button>
       </form>
     {% endif %}

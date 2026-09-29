@@ -2,7 +2,7 @@
 
 from urllib.parse import parse_qs, urlparse
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 
 from app.core.database import SessionLocal
 from app.models.assignment import Assignment
@@ -13,19 +13,6 @@ from app.models.volunteer import Volunteer
 
 def _forwarded_for(ip: str) -> dict[str, str]:
     return {"X-Forwarded-For": ip}
-
-
-def _reset_web_tables() -> None:
-    db = SessionLocal()
-    try:
-        db.execute(text("TRUNCATE TABLE assignments RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE tasks RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE volunteers RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE organizations RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE"))
-        db.commit()
-    finally:
-        db.close()
 
 
 def test_public_pages_render(client):
@@ -47,8 +34,6 @@ def test_login_page_sets_security_headers(client):
 
 
 def test_login_rate_limiter_blocks_11th_attempt(client):
-    _reset_web_tables()
-
     target_ip = "198.51.100.23"
     for attempt in range(10):
         response = client.post(
@@ -70,8 +55,6 @@ def test_login_rate_limiter_blocks_11th_attempt(client):
 
 
 def test_register_rejects_admin_role(client):
-    _reset_web_tables()
-
     response = client.post(
         "/register",
         data={
@@ -96,8 +79,6 @@ def test_protected_routes_redirect_to_login(client):
 
 
 def test_volunteer_registration_and_dashboard(client):
-    _reset_web_tables()
-
     r = client.post(
         "/register",
         data={
@@ -122,8 +103,6 @@ def test_volunteer_registration_and_dashboard(client):
 
 
 def test_volunteer_can_filter_matched_tasks(client):
-    _reset_web_tables()
-
     client.post(
         "/register",
         data={
@@ -199,8 +178,6 @@ def test_volunteer_can_filter_matched_tasks(client):
 
 
 def test_coordinator_registration_and_dashboard(client):
-    _reset_web_tables()
-
     r = client.post(
         "/register",
         data={
@@ -223,8 +200,6 @@ def test_coordinator_registration_and_dashboard(client):
 
 
 def test_coordinator_dashboard_shows_analytics_metrics(client):
-    _reset_web_tables()
-
     client.post(
         "/register",
         data={
@@ -288,8 +263,6 @@ def test_coordinator_dashboard_shows_analytics_metrics(client):
 
 
 def test_login_rejects_bad_password(client):
-    _reset_web_tables()
-
     client.post(
         "/register",
         data={
@@ -314,8 +287,6 @@ def test_login_rejects_bad_password(client):
 
 
 def test_login_ignores_unsafe_next_redirects(client):
-    _reset_web_tables()
-
     client.post(
         "/register",
         data={
@@ -357,8 +328,6 @@ def test_login_ignores_unsafe_next_redirects(client):
 
 
 def test_role_isolation_volunteer_cannot_see_coordinator(client):
-    _reset_web_tables()
-
     # Register as volunteer
     client.post(
         "/register",
@@ -378,8 +347,6 @@ def test_role_isolation_volunteer_cannot_see_coordinator(client):
 
 
 def test_coordinator_rejects_invalid_task_status(client):
-    _reset_web_tables()
-
     client.post(
         "/register",
         data={
@@ -433,8 +400,6 @@ def test_coordinator_rejects_invalid_task_status(client):
 
 
 def test_volunteer_cannot_apply_to_closed_task(client):
-    _reset_web_tables()
-
     db = SessionLocal()
     try:
         task = Task(
@@ -477,8 +442,6 @@ def test_volunteer_cannot_apply_to_closed_task(client):
 
 
 def test_coordinator_cannot_approve_beyond_task_capacity(client):
-    _reset_web_tables()
-
     client.post(
         "/register",
         data={
@@ -537,8 +500,6 @@ def test_coordinator_cannot_approve_beyond_task_capacity(client):
 
 
 def test_volunteer_cannot_apply_to_full_task(client):
-    _reset_web_tables()
-
     db = SessionLocal()
     try:
         existing_volunteer = Volunteer(name="Already Approved", skills=[])

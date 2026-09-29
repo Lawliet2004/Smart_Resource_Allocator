@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
@@ -10,7 +10,15 @@ from app.models.assignment import Assignment
 from app.models.task import Task
 from app.models.user import User
 from app.models.volunteer import Volunteer
-from app.services.capacity import capacity_summaries, capacity_summary, filled_slots_for_task
+from app.services.capacity import (
+    capacity_summaries,
+    capacity_summary,
+    filled_slots_for_task,
+    lock_task_for_update,
+)
+from app.services.scoring import is_eligible, match_score
+from app.services.search import LIKE_ESCAPE_CHAR, like_pattern
+from app.services.skills import SKILL_OPTIONS, VALID_SKILLS, normalize_skills
 from app.web.deps import DbSession, get_current_user, login_path
 from app.web.forms import (
     form_bool,
@@ -19,34 +27,14 @@ from app.web.forms import (
     form_value,
     parse_urlencoded_form,
 )
-from app.web.options import SKILL_OPTIONS
 from app.web.templates import context, templates
 
 router = APIRouter()
 
-VALID_SKILLS = {value for value, _label in SKILL_OPTIONS}
 MAX_NAME_CHARS = 255
 MAX_PHONE_CHARS = 50
 MAX_LOCATION_CHARS = 255
 MAX_TASK_SEARCH_CHARS = 100
-
-
-def normalize_skills(skills: list[str]) -> list[str]:
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for skill in skills:
-        if skill in VALID_SKILLS and skill not in seen:
-            deduped.append(skill)
-            seen.add(skill)
-    return deduped
-
-
-def normalized_skill_set(skills: list[object] | None) -> set[str]:
-    return {
-        skill.strip().casefold()
-        for skill in (skills or [])
-        if isinstance(skill, str) and skill.strip()
-    }
 
 
 def parse_urgency_filter(value: str) -> int | None:
@@ -59,6 +47,10 @@ def parse_urgency_filter(value: str) -> int | None:
     if 1 <= urgency <= 5:
         return urgency
     return None
+
+
+def clamp_search(value: str) -> str:
+    return value[:MAX_TASK_SEARCH_CHARS]
 
 
 def volunteer_task_filters(request: Request) -> dict[str, str | int | None]:
@@ -81,16 +73,11 @@ def filter_matched_tasks(
     matched_tasks: list[tuple[Task, int]],
     filters: dict[str, str | int | None],
 ) -> list[tuple[Task, int]]:
-    query = str(filters.get("q") or "").casefold()
     skill = str(filters.get("skill") or "")
     location = str(filters.get("location") or "").casefold()
     urgency = filters.get("urgency")
     filtered: list[tuple[Task, int]] = []
     for task, score in matched_tasks:
-        if query:
-            searchable = f"{task.title} {task.description or ''}".casefold()
-            if query not in searchable:
-                continue
         if skill and skill not in (task.required_skills or []):
             continue
         if location and location not in (task.location or "").casefold():
@@ -131,55 +118,41 @@ def get_or_create_profile(user: User, db: DbSession) -> Volunteer:
         raise
 
 
-def task_match_score(task: Task, volunteer: Volunteer) -> int:
-    score = 0
-    volunteer_skills = normalized_skill_set(volunteer.skills)
-    required_skills = normalized_skill_set(task.required_skills)
-    if required_skills:
-        score += len(required_skills.intersection(volunteer_skills)) * 25
-    if task.location and volunteer.location and task.location.lower() == volunteer.location.lower():
-        score += 30
-    if volunteer.is_available:
-        score += 20
-    score += max(1, min(task.urgency or 1, 5)) * 5
-    return score
-
-
 def matched_open_tasks(
     db: DbSession, volunteer: Volunteer, q: str | None = None
 ) -> list[tuple[Task, int]]:
-    stmt = (
-        select(Task)
-        .where(Task.status.in_(["open", "pending"]))
-    )
-    if q:
-        stmt = stmt.where(Task.title.ilike(f"%{q}%"))
-        
-    stmt = (
-        stmt.order_by(Task.urgency.desc(), Task.id.desc())
-        .limit(settings.VOLUNTEER_TASK_SCAN_LIMIT)
+    """Open tasks this volunteer is eligible for, best match first.
+
+    The free-text search runs in SQL over title *and* description so the
+    dashboard quick-search and the full task list agree on what "matches".
+    """
+    stmt = select(Task).where(Task.status.in_(["open", "pending"]))
+
+    search = (q or "").strip()
+    if search:
+        pattern = like_pattern(clamp_search(search))
+        stmt = stmt.where(
+            or_(
+                Task.title.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                Task.description.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+            )
+        )
+
+    stmt = stmt.order_by(Task.urgency.desc(), Task.id.desc()).limit(
+        settings.VOLUNTEER_TASK_SCAN_LIMIT
     )
     tasks = db.execute(stmt).scalars().all()
-    ranked: list[tuple[Task, int]] = []
+
     capacity_by_task_id = capacity_summaries(tasks, db)
-    volunteer_skills = normalized_skill_set(volunteer.skills)
-    volunteer_location = (volunteer.location or "").strip().casefold()
+    ranked: list[tuple[Task, int]] = []
     for task in tasks:
         capacity = capacity_by_task_id.get(task.id)
         if capacity is not None and capacity["is_full"]:
             continue
-        required_skills = normalized_skill_set(task.required_skills)
-        if required_skills and not required_skills.intersection(volunteer_skills):
+        if not is_eligible(task, volunteer):
             continue
-        # Symmetric location filter: if the task specifies a real location,
-        # the volunteer must have a matching one. Tasks without a location —
-        # or with the extractor sentinel "unknown" — are always eligible, to
-        # stay consistent with app/services/matcher.py.
-        task_location = (task.location or "").strip().casefold()
-        if task_location and task_location != "unknown" and task_location != volunteer_location:
-            continue
-        ranked.append((task, task_match_score(task, volunteer)))
-    return sorted(ranked, key=lambda item: item[1], reverse=True)
+        ranked.append((task, match_score(task, volunteer)))
+    return sorted(ranked, key=lambda item: (-item[1], -(item[0].id or 0)))
 
 
 @router.get("/")
@@ -189,9 +162,10 @@ def dashboard(request: Request, db: DbSession, q: str | None = None):
         return user
 
     profile = get_or_create_profile(user, db)
-    matched_tasks = matched_open_tasks(db, profile, q=q)[:5]
+    search = clamp_search((q or "").strip())
+    matched_tasks = matched_open_tasks(db, profile, q=search)[:5]
     capacity_by_task_id = capacity_summaries((task for task, _score in matched_tasks), db)
-    
+
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
             "partials/matched_tasks_list.html",
@@ -200,6 +174,7 @@ def dashboard(request: Request, db: DbSession, q: str | None = None):
                 user,
                 matched_tasks=matched_tasks,
                 capacity_by_task_id=capacity_by_task_id,
+                search=search,
             ),
         )
 
@@ -213,7 +188,7 @@ def dashboard(request: Request, db: DbSession, q: str | None = None):
         .order_by(Assignment.applied_at.desc())
         .limit(min(5, settings.VOLUNTEER_ASSIGNMENTS_LIMIT))
     ).all()
-    
+
     return templates.TemplateResponse(
         "volunteer/dashboard.html",
         context(
@@ -224,6 +199,7 @@ def dashboard(request: Request, db: DbSession, q: str | None = None):
             capacity_by_task_id=capacity_by_task_id,
             assignments=assignments,
             assignment_count=assignment_count,
+            search=search,
         ),
     )
 
@@ -294,7 +270,9 @@ def tasks_page(request: Request, db: DbSession):
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    matched_tasks = filter_matched_tasks(matched_open_tasks(db, profile), filters)
+    matched_tasks = filter_matched_tasks(
+        matched_open_tasks(db, profile, q=str(filters["q"] or "")), filters
+    )
     return templates.TemplateResponse(
         "volunteer/tasks.html",
         context(
@@ -379,8 +357,18 @@ def apply_to_task(task_id: int, request: Request, db: DbSession):
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    capacity = capacity_summary(task, filled_slots_for_task(db, task.id))
+    # Lock the task row so the capacity check below cannot race another
+    # application or an approval happening at the same moment.
+    locked_task = lock_task_for_update(db, task.id)
+    if locked_task is None:
+        db.rollback()
+        return RedirectResponse(
+            "/v/tasks?error=Task not found.", status_code=status.HTTP_303_SEE_OTHER
+        )
+
+    capacity = capacity_summary(locked_task, filled_slots_for_task(db, locked_task.id))
     if capacity["is_full"]:
+        db.rollback()
         return RedirectResponse(
             f"/v/tasks/{task.id}?error=Task already has enough approved volunteers.",
             status_code=status.HTTP_303_SEE_OTHER,
@@ -390,7 +378,13 @@ def apply_to_task(task_id: int, request: Request, db: DbSession):
     try:
         db.commit()
     except IntegrityError:
+        # The unique (task_id, volunteer_id) constraint fired: someone
+        # double-submitted. Report the truth rather than a phantom success.
         db.rollback()
+        return RedirectResponse(
+            f"/v/tasks/{task.id}?message=Application already submitted.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
 
     return RedirectResponse(
         f"/v/tasks/{task.id}?message=Application submitted.",

@@ -35,6 +35,18 @@ def filled_slots_for_task(db: Session, task_id: int) -> int:
     return filled_slots_by_task_ids(db, [task_id]).get(task_id, 0)
 
 
+def lock_task_for_update(db: Session, task_id: int) -> Task | None:
+    """Row-lock a task so a capacity check and the write that follows are atomic.
+
+    Approving an applicant (or applying to a task) reads the filled-slot count
+    and then writes based on it. Without a lock, two concurrent requests can
+    both observe a free slot and both take it, overfilling the task.
+    """
+    return db.execute(
+        select(Task).where(Task.id == task_id).with_for_update()
+    ).scalar_one_or_none()
+
+
 def capacity_summary(task: Task, filled_slots: int) -> dict[str, int | bool]:
     needed = task_capacity(task)
     filled = min(filled_slots, needed)

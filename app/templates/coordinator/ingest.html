@@ -16,6 +16,7 @@
     hx-swap="innerHTML"
     class="space-y-4"
   >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="form-field">
       <span>Report text</span>
       <textarea class="input min-h-40" name="raw_text" required></textarea>

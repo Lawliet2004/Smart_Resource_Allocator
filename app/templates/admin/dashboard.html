@@ -59,6 +59,7 @@
               <td class="px-4 py-3 text-right">
                 {% if item.id != user.id %}
                   <form method="post" action="/a/users/{{ item.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button class="btn-secondary" type="submit">{{ "Deactivate" if item.is_active else "Activate" }}</button>
                   </form>
                 {% endif %}

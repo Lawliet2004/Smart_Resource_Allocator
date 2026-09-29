@@ -11,11 +11,15 @@ from sqlalchemy.orm import Session
 
 from app.api.router import api_router
 from app.core.database import get_db
+from app.core.logging import configure_logging
+from app.web.csrf import CSRFMiddleware
 from app.web.rate_limit import limiter, rate_limit_exceeded_handler
 from app.web.router import web_router
 from app.web.security_headers import add_security_headers
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+configure_logging()
 
 app = FastAPI(
     title="Smart Resource Allocator",
@@ -26,6 +30,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(CSRFMiddleware)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(web_router)

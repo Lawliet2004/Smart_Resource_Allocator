@@ -38,14 +38,17 @@
             <button class="btn-secondary opacity-60" type="button" disabled>Capacity full</button>
           {% else %}
             <form method="post" action="/c/assignments/{{ assignment.id }}/approve">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn-primary" type="submit">Approve</button>
             </form>
           {% endif %}
           <form method="post" action="/c/assignments/{{ assignment.id }}/reject">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn-secondary" type="submit">Reject</button>
           </form>
         {% elif assignment.status == "approved" %}
           <form method="post" action="/c/assignments/{{ assignment.id }}/complete">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn-secondary" type="submit">Complete</button>
           </form>
         {% else %}

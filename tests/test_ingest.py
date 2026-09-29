@@ -1,24 +1,10 @@
 """Tests for the /api/ingest/ endpoint (extractor + matcher end-to-end)."""
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.task import Task
-
-
-def _reset_tables() -> None:
-    """Wipe tasks + volunteers between tests so ordering doesn't matter."""
-    db = SessionLocal()
-    try:
-        db.execute(text("TRUNCATE TABLE assignments RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE tasks RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE volunteers RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE organizations RESTART IDENTITY CASCADE"))
-        db.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE"))
-        db.commit()
-    finally:
-        db.close()
 
 
 def _register_user(client, *, email: str, role: str, name: str) -> None:
@@ -40,8 +26,6 @@ def _register_user(client, *, email: str, role: str, name: str) -> None:
 
 
 def test_ingest_requires_coordinator_auth(client):
-    _reset_tables()
-
     response = client.post(
         "/api/ingest/",
         json={"raw_text": "Urgent flood downtown, need water rescue help"},
@@ -50,8 +34,6 @@ def test_ingest_requires_coordinator_auth(client):
 
 
 def test_ingest_rejects_non_coordinator_user(client):
-    _reset_tables()
-
     _register_user(client, email="vol@example.com", role="volunteer", name="Volunteer")
     response = client.post(
         "/api/ingest/",
@@ -61,8 +43,6 @@ def test_ingest_rejects_non_coordinator_user(client):
 
 
 def test_ingest_rejects_blank_or_oversized_payload(client):
-    _reset_tables()
-
     _register_user(client, email="coord@example.com", role="coordinator", name="Coordinator")
 
     blank = client.post("/api/ingest/", json={"raw_text": "   "})
@@ -76,7 +56,6 @@ def test_ingest_rejects_blank_or_oversized_payload(client):
 
 
 def test_ingest_creates_task_and_matches_by_skill_and_location(client):
-    _reset_tables()
     _register_user(client, email="coord@example.com", role="coordinator", name="Coordinator")
 
     # Seed two volunteers: one matches, one doesn't.

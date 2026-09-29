@@ -7,7 +7,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.models.user import User
-from app.web.options import SKILL_OPTIONS
+from app.services.skills import skill_label
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 
@@ -27,11 +27,6 @@ class WebTemplates(Jinja2Templates):
 templates = WebTemplates(directory=str(TEMPLATE_DIR))
 
 
-def skill_label(value: str) -> str:
-    labels = dict(SKILL_OPTIONS)
-    return labels.get(value, value.replace("_", " ").title())
-
-
 templates.env.filters["skill_label"] = skill_label
 
 
@@ -42,4 +37,13 @@ def context(
 ) -> dict[str, Any]:
     message = extra.pop("message", None) or request.query_params.get("message")
     error = extra.pop("error", None) or request.query_params.get("error")
-    return {"request": request, "user": user, "message": message, "error": error, **extra}
+    return {
+        "request": request,
+        "user": user,
+        "message": message,
+        "error": error,
+        # Injected by CSRFMiddleware; every <form> must render it as a hidden
+        # input, and HTMX requests may send it as the X-CSRF-Token header.
+        "csrf_token": getattr(request.state, "csrf_token", ""),
+        **extra,
+    }

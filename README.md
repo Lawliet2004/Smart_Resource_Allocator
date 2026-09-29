@@ -6,8 +6,11 @@ NGOs post volunteer tasks (skills, location, time). Volunteers register with
 their skills and availability. The system matches them, coordinators approve
 applicants, both sides confirm completion.
 
-**Status:** early development. Week 1 walking skeleton (FastAPI + Postgres +
-Alembic + tests) is in place. See `/docs` for roadmap.
+**Status:** working MVP. Volunteers and coordinators can register, coordinators
+post tasks (by hand or by pasting a field report), volunteers browse matched
+tasks and apply, and coordinators approve/reject/complete applications. See
+[`docs/`](docs/) for the code review notes and the roadmap below for what is
+still open.
 
 ## Tech stack
 
@@ -20,13 +23,21 @@ Alembic + tests) is in place. See `/docs` for roadmap.
 
 ```
 app/
-  core/       # settings, db engine, session factory
+  core/       # settings, db engine, session factory, logging
   models/     # SQLAlchemy models (one file per table)
+  schemas/    # Pydantic request/response models for the JSON API
+  services/   # domain logic: skills, scoring, capacity, search, extractor, matcher
+  web/        # HTML pages (Jinja + HTMX), auth, CSRF, rate limiting
+  api/        # JSON API endpoints
+  templates/  # Jinja templates
+  static/     # CSS
   main.py     # FastAPI entry point
 alembic/
   versions/   # migration scripts
   env.py      # wires Alembic to our models + .env
+docs/         # engineering notes
 tests/        # pytest suite
+requirements.lock  # pinned runtime deps used by the Docker build
 docker-compose.yml
 pyproject.toml
 ```
@@ -88,6 +99,8 @@ Requires Docker Postgres to be running (`docker compose up -d`).
 
 ## Current endpoints
 
+Infrastructure:
+
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Liveness probe |
@@ -95,16 +108,85 @@ Requires Docker Postgres to be running (`docker compose up -d`).
 | GET | `/docs` | Swagger UI (auto-generated) |
 | GET | `/redoc` | ReDoc (auto-generated) |
 
+Auth (HTML):
+
+| Method | Path | Description |
+|---|---|---|
+| GET/POST | `/register` | Create a volunteer or coordinator account |
+| GET/POST | `/login` | Start a session |
+| POST | `/logout` | End a session |
+
+Volunteer (`/v`, HTML):
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v/` | Dashboard: top matches (HTMX search), assignments |
+| GET/POST | `/v/profile` | Skills, location, availability |
+| GET | `/v/tasks` | Matched open tasks, with filters |
+| GET | `/v/tasks/{id}` | Task detail |
+| POST | `/v/tasks/{id}/apply` | Apply to a task |
+| GET | `/v/assignments` | Application history |
+
+Coordinator (`/c`, HTML):
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/c/` | Dashboard: tasks, pending applications, analytics |
+| GET/POST | `/c/tasks/new` | Create a task |
+| GET/POST | `/c/tasks/{id}/edit` | Edit a task |
+| POST | `/c/tasks/{id}/status` | Change task status |
+| GET | `/c/tasks/{id}/applicants` | Review applicants |
+| POST | `/c/assignments/{id}/{approve\|reject\|complete}` | Decide on an application |
+| GET/POST | `/c/ingest` | Paste a field report, auto-create a task |
+
+Admin (`/a`, HTML):
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/a/` | Users, organizations, system counts |
+| POST | `/a/users/{id}/toggle` | Activate / deactivate a user |
+
+JSON API:
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/ingest/` | Ingest a field report (coordinator session required) |
+
+All unsafe HTML requests require a CSRF token; see "Security notes" below.
+
+## Security notes
+
+- **Sessions:** JWT in an HttpOnly, SameSite=Lax cookie; `Secure` is derived
+  from `APP_ENV` unless `SESSION_COOKIE_SECURE` is set explicitly.
+- **CSRF:** signed double-submit cookie plus an origin check, enforced for every
+  unsafe request by middleware (`app/web/csrf.py`). Templates render the token
+  via `{{ csrf_token }}`; HTMX requests may send `X-CSRF-Token` instead.
+- **Rate limiting:** slowapi, per IP (or per user for the API). Buckets are
+  in-process, so run a single worker or move slowapi to Redis before scaling out.
+- **Headers:** CSP, HSTS (deployed envs only), `X-Frame-Options`, `nosniff`,
+  `Referrer-Policy`, `Permissions-Policy`.
+
 ## Roadmap (high level)
 
-- **Week 1 (current):** walking skeleton - FastAPI + Postgres + Alembic + tests
-- **Week 2:** auth (register, login, JWT, roles)
-- **Week 3:** Organizations and Tasks CRUD
-- **Week 4:** Volunteer profiles (skills, availability, location)
-- **Week 5:** Matching endpoint (rule-based filter, haversine distance)
-- **Week 6:** Assignment flow (apply, approve, complete)
-- **Week 7:** Minimal UI (Jinja2 + HTMX)
-- **Week 8:** Deploy + first real NGO pilot
+Done:
+
+- Walking skeleton - FastAPI + Postgres + Alembic + tests
+- Auth (register, login, session cookie, roles)
+- Organizations and Tasks CRUD
+- Volunteer profiles (skills, availability, location)
+- Rule-based matching and scoring (`app/services/scoring.py`)
+- Assignment flow (apply, approve, reject, complete) with capacity limits
+- UI (Jinja2 + HTMX), coordinator analytics, field-report ingest
+- Deployment artifacts (Docker, compose, CI) and CSRF hardening
+
+Next:
+
+- Distance-based matching (the `latitude` / `longitude` columns are collected
+  but not yet used)
+- Build Tailwind at release time instead of loading the CDN build, so the CSP
+  can drop `unsafe-inline`
+- Move skills to an indexed column type so matching filters in the database
+- First real NGO pilot
 
 ## License
 

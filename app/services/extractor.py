@@ -4,8 +4,13 @@ import re
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.services.skills import normalize_skills
 
 logger = logging.getLogger(__name__)
+
+MAX_TITLE_CHARS = 255
+MAX_LOCATION_CHARS = 255
+MAX_PEOPLE_NEEDED = 10_000
 
 
 class TaskExtraction(BaseModel):
@@ -55,14 +60,14 @@ def _mock_extract(raw_text: str) -> dict:
             people_needed = int(match.group(1))
     if any(re.search(pattern, text) for pattern in [r"\bflood(?:s|ed|ing)?\b", r"\bwater\b"]):
         skills.append("water_rescue")
-    
+
     medical_patterns = [r"\bmedical\b", r"\bdoctors?\b", r"\binjured\b"]
     if any(re.search(pattern, text) for pattern in medical_patterns):
         skills.append("medical_assistance")
-        
+
     if any(re.search(pattern, text) for pattern in [r"\bdebris\b", r"\bclear(?:ing)?\b"]):
         skills.append("heavy_lifting")
-        
+
     if re.search(r"\bdowntown\b", text):
         location = "Downtown"
     elif re.search(r"\bnorth\b", text):
@@ -88,6 +93,36 @@ def _mock_extract(raw_text: str) -> dict:
     }
 
 
+def _coerce_int(value: object, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(parsed, maximum))
+
+
+def sanitize_extraction(data: dict) -> dict:
+    """Clamp extractor output to what the database and UI can accept.
+
+    The Gemini path returns model-authored values: a 5,000-character title or an
+    urgency of 9 would otherwise reach the Task insert and fail (or render
+    badly). The mock path is passed through the same guard so both behave
+    identically.
+    """
+    title = str(data.get("title") or "").strip() or "Field Report"
+    location = str(data.get("location") or "").strip() or "Unknown"
+    return {
+        "title": title[:MAX_TITLE_CHARS],
+        "description": str(data.get("description") or "").strip() or None,
+        "location": location[:MAX_LOCATION_CHARS],
+        "urgency": _coerce_int(data.get("urgency"), default=1, minimum=1, maximum=5),
+        "people_needed": _coerce_int(
+            data.get("people_needed"), default=1, minimum=1, maximum=MAX_PEOPLE_NEEDED
+        ),
+        "required_skills": normalize_skills(data.get("required_skills")),
+    }
+
+
 def extract_task_data(raw_text: str) -> dict:
     """
     Extract structured task data from raw field report using Gemini if configured,
@@ -95,11 +130,11 @@ def extract_task_data(raw_text: str) -> dict:
     """
     if not settings.GEMINI_API_KEY:
         logger.info("GEMINI_API_KEY not set. Using mock extractor.")
-        return _mock_extract(raw_text)
+        return sanitize_extraction(_mock_extract(raw_text))
 
     try:
         from google import genai
-        
+
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         response = client.models.generate_content(
             model='gemini-2.5-flash',
@@ -109,11 +144,12 @@ def extract_task_data(raw_text: str) -> dict:
                 'response_schema': TaskExtraction,
             },
         )
-        
+
         if response.text:
-            return TaskExtraction.model_validate_json(response.text).model_dump()
-            
+            extracted = TaskExtraction.model_validate_json(response.text).model_dump()
+            return sanitize_extraction(extracted)
+
     except Exception:
         logger.exception("Failed to use Gemini for extraction. Falling back to mock extractor.")
-        
-    return _mock_extract(raw_text)
+
+    return sanitize_extraction(_mock_extract(raw_text))
