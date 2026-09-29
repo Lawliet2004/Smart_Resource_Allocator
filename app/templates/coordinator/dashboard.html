@@ -141,10 +141,12 @@
             <a class="btn-secondary" href="/c/tasks/{{ task.id }}/edit">Edit</a>
             <a class="btn-secondary" href="/c/tasks/{{ task.id }}/applicants">Applicants</a>
             <form method="post" action="/c/tasks/{{ task.id }}/status">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="status" value="completed">
               <button class="btn-secondary" type="submit">Complete</button>
             </form>
             <form method="post" action="/c/tasks/{{ task.id }}/status">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="status" value="closed">
               <button class="btn-secondary" type="submit">Close</button>
             </form>
@@ -172,10 +174,12 @@
               <button class="btn-secondary opacity-60" type="button" disabled>Capacity full</button>
             {% else %}
               <form method="post" action="/c/assignments/{{ assignment.id }}/approve">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="btn-primary" type="submit">Approve</button>
               </form>
             {% endif %}
             <form method="post" action="/c/assignments/{{ assignment.id }}/reject">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn-secondary" type="submit">Reject</button>
             </form>
           </div>

@@ -11,11 +11,17 @@ Set these variables in your deployment platform or shell:
 - APP_ENV: `production` (or `prod` / `staging`)
 - SESSION_COOKIE_SECURE: `true`
 
+- GEMINI_API_KEY: optional. Leave **empty** to use the built-in keyword
+  extractor; set it to a real key to have field reports parsed by Gemini. An
+  invalid non-empty value makes every ingest attempt a failing API call before
+  falling back.
+
 Optional tuning variables:
 
 - AUTH_LOGIN_RATE_LIMIT (default: `10/minute`)
 - AUTH_REGISTER_RATE_LIMIT (default: `5/minute`)
 - INGEST_RATE_LIMIT (default: `30/minute`)
+- RUN_MIGRATIONS (default: `1`) — the container entrypoint runs `alembic upgrade head` before starting uvicorn. Set to `0` when your platform performs migrations as a separate release step, or when several instances start at once.
 - TRUST_FORWARDED_HEADERS (default: `false`) — set to `true` **only** when the app runs behind a trusted reverse proxy (Caddy, nginx, Fly proxy, Cloudflare Tunnel, etc.) that overwrites `X-Forwarded-For`. Leaving it `false` when directly exposed prevents clients from spoofing the header to bypass rate limits.
 
 ## Build and run with Docker Compose (production file)
@@ -26,7 +32,8 @@ Optional tuning variables:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-2. Run DB migrations in the app container:
+2. Migrations run automatically on container start (see `RUN_MIGRATIONS`). To
+   apply them manually instead:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec app alembic upgrade head
@@ -80,3 +87,21 @@ Restore (host command):
 ```bash
 pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" sra_backup.sql
 ```
+
+## CSRF protection
+
+All unsafe requests (POST/PUT/PATCH/DELETE) are validated by
+`app/web/csrf.py`:
+
+- every HTML response sets a signed, HttpOnly `sra_csrf` cookie;
+- every form must submit the same value in a `csrf_token` field (templates
+  render `{{ csrf_token }}` into a hidden input) or an `X-CSRF-Token` header;
+- the `Origin`/`Referer` header of unsafe requests must match the request host.
+
+Two deployment consequences:
+
+1. **The token is signed with `JWT_SECRET`.** Rotating that secret invalidates
+   every outstanding form as well as every session; expect users to reload once.
+2. **Do not add permissive CORS.** `/api/` routes skip the token check because
+   a cross-origin JSON POST is blocked by the browser's preflight. Adding a
+   wildcard CORS middleware would remove that protection.

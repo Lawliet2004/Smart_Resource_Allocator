@@ -6,6 +6,7 @@
 <section class="mx-auto max-w-xl">
   <h1 class="mb-6 text-2xl font-semibold">Register</h1>
   <form method="post" action="/register" class="space-y-4 rounded border border-slate-200 bg-white p-5">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="form-field">
       <span>Name</span>
       <input class="input" type="text" name="name" autocomplete="name" required>

@@ -13,6 +13,7 @@ from app.models.task import Task
 from app.schemas.ingest import IngestRequest, IngestResponse
 from app.services.extractor import extract_task_data
 from app.services.matcher import find_best_volunteers
+from app.services.skills import normalize_skills
 from app.web.deps import get_current_user
 from app.web.rate_limit import limiter, user_or_ip_key
 
@@ -42,9 +43,6 @@ def ingest_field_report(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Coordinator role required.",
         )
-
-    # Shared helper (avoid duplicating skill normalization with the web path).
-    from app.web.coordinator import normalize_skills
 
     try:
         # 1. Extract structured data from raw text

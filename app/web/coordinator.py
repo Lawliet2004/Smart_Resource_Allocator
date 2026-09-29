@@ -16,9 +16,15 @@ from app.models.organization import Organization
 from app.models.task import Task
 from app.models.user import User
 from app.models.volunteer import Volunteer
-from app.services.capacity import capacity_summaries, capacity_summary, filled_slots_for_task
+from app.services.capacity import (
+    capacity_summaries,
+    capacity_summary,
+    filled_slots_for_task,
+    lock_task_for_update,
+)
 from app.services.extractor import extract_task_data
 from app.services.matcher import find_best_volunteers
+from app.services.skills import SKILL_OPTIONS, normalize_skills
 from app.web.deps import DbSession, get_current_user, login_path
 from app.web.forms import (
     form_float,
@@ -26,25 +32,14 @@ from app.web.forms import (
     form_value,
     parse_urlencoded_form,
 )
-from app.web.options import ASSIGNMENT_ACTIONS, SKILL_OPTIONS, TASK_STATUSES
+from app.web.options import ASSIGNMENT_ACTIONS, TASK_STATUSES
 from app.web.templates import context, templates
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-VALID_SKILLS = {value for value, _label in SKILL_OPTIONS}
 MAX_LOCATION_CHARS = 255
-
-
-def normalize_skills(skills: list[str]) -> list[str]:
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for skill in skills:
-        if skill in VALID_SKILLS and skill not in seen:
-            deduped.append(skill)
-            seen.add(skill)
-    return deduped
 
 
 def parse_urgency(value: str) -> int | None:
@@ -494,8 +489,17 @@ def decide_assignment(assignment_id: int, action: str, request: Request, db: DbS
                 f"/c/tasks/{task.id}/applicants?error=Only applied assignments can be approved.",
                 status_code=status.HTTP_303_SEE_OTHER,
             )
-        capacity = capacity_summary(task, filled_slots_for_task(db, task.id))
+        # Lock the task row so two coordinators approving at the same time
+        # cannot both see a free slot and overfill the task.
+        locked_task = lock_task_for_update(db, task.id)
+        if locked_task is None:
+            db.rollback()
+            return RedirectResponse(
+                "/c/?error=Task not found.", status_code=status.HTTP_303_SEE_OTHER
+            )
+        capacity = capacity_summary(locked_task, filled_slots_for_task(db, locked_task.id))
         if capacity["is_full"]:
+            db.rollback()
             return RedirectResponse(
                 f"/c/tasks/{task.id}/applicants?error=Task already has enough approved volunteers.",
                 status_code=status.HTTP_303_SEE_OTHER,

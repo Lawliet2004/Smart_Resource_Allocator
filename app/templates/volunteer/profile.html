@@ -8,6 +8,7 @@
 </section>
 
 <form method="post" action="/v/profile" class="grid gap-6 lg:grid-cols-[1fr_.9fr]">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <section class="space-y-4 rounded border border-slate-200 bg-white p-5">
     <label class="form-field">
       <span>Name</span>

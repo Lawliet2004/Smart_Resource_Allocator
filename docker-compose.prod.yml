@@ -31,6 +31,11 @@ services:
       # overwrites X-Forwarded-For. Otherwise clients can spoof the header
       # to bypass rate limits.
       TRUST_FORWARDED_HEADERS: ${TRUST_FORWARDED_HEADERS:-false}
+      # Optional: leave unset/empty to use the built-in keyword extractor.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # The entrypoint runs `alembic upgrade head` before serving; set to 0 if
+      # you prefer to run migrations as a separate release step.
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
     ports:
       - "8000:8000"
     healthcheck:

@@ -28,6 +28,7 @@
               <a class="nav-link" href="/a/">Admin</a>
             {% endif %}
             <form method="post" action="/logout">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn-secondary" type="submit">Sign out</button>
             </form>
           {% else %}
